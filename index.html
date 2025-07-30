@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-ESRGAN 批量高清处理</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ddd;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn.success {
+            background: #28a745;
+        }
+        .btn.danger {
+            background: #dc3545;
+        }
+        .btn.warning {
+            background: #ffc107;
+            color: #333;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .file-list {
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            background: #f9f9f9;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .file-info {
+            flex: 1;
+        }
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+        .file-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .btn-small {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .checkbox {
+            margin-right: 10px;
+        }
+        .bulk-actions {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .select-all-container {
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #e9ecef;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-ESRGAN 批量高清处理</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <p>拖拽图片到此处或点击选择文件</p>
+            <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+            <button class="btn" onclick="document.getElementById('fileInput').click()">选择文件</button>
+        </div>
+        
+        <div id="fileList" class="file-list" style="display: none;">
+            <div class="bulk-actions">
+                <div class="select-all-container">
+                    <input type="checkbox" id="selectAll" class="checkbox" onchange="toggleSelectAll()">
+                    <label for="selectAll">全选</label>
+                    <button class="btn btn-small danger" onclick="deleteSelected()" style="margin-left: 10px;">删除选中</button>
+                </div>
+            </div>
+            <div id="fileItems"></div>
+        </div>
+        
+        <div style="text-align: center;">
+            <button class="btn" id="uploadBtn" onclick="uploadFiles()" disabled>上传文件</button>
+            <button class="btn" id="processBtn" onclick="processFiles()" disabled>开始处理</button>
+            <button class="btn success" id="downloadBtn" onclick="downloadResult()" style="display: none;">下载结果</button>
+        </div>
+        
+        <div class="progress" id="progressBar" style="display: none;">
+            <div class="progress-bar" id="progressFill"></div>
+        </div>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        // const API_BASE = 'https://your-cpolar-url-here'; // 这个会被auto_update.py自动替换
+        const API_BASE = 'http://127.0.0.1:5000';
+        let sessionId = '';
+        let uploadedFiles = [];
+        let selectedFiles = new Set();
+
+        // 文件选择处理
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            handleFiles(e.target.files);
+        });
+
+        // 拖拽处理
+        //当文件被拖拽到上传区域时添加视觉效果
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        // 拖拽离开处理 - 当文件离开上传区域时移除视觉效果
+        uploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+
+        // 拖拽放下处理 - 当文件被放下时处理拖拽的文件
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+    /**
+     * 处理选择的文件 - 过滤并存储有效的图片文件
+     * @param {FileList} files - 用户选择的文件列表
+     */
+        function handleFiles(files) {
+            uploadedFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+            selectedFiles.clear();
+            updateFileList();
+            document.getElementById('uploadBtn').disabled = uploadedFiles.length === 0;
+        }
+
+        /**
+     * 更新文件列表显示 - 渲染文件列表UI
+     */
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            const fileItems = document.getElementById('fileItems');
+            
+            if (uploadedFiles.length === 0) {
+                fileList.style.display = 'none';
+                return;
+            }
+
+            fileList.style.display = 'block';
+            fileItems.innerHTML = uploadedFiles.map((file, index) => `
+                <div class="file-item">
+                    <div class="file-info">
+                        <input type="checkbox" class="checkbox" id="file${index}" onchange="toggleFileSelection(${index})">
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">(${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn btn-small danger" onclick="deleteFile(${index})">删除</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            updateSelectAllCheckbox();
+        }
+
+    /**
+     * 切换文件选择状态 - 添加或移除选中文件的索引
+     * @param {number} index - 文件在列表中的索引
+     */
+        function toggleFileSelection(index) {
+            if (selectedFiles.has(index)) {
+                selectedFiles.delete(index);
+            } else {
+                selectedFiles.add(index);
+            }
+            updateSelectAllCheckbox();
+        }
+    
+    /**
+     * 全选/取消全选 - 根据全选复选框状态更新所有文件的选择状态
+     */
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            if (selectAll.checked) {
+                // 全选
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    selectedFiles.add(i);
+                    document.getElementById(`file${i}`).checked = true;
+                }
+            } else {
+                // 取消全选
+                selectedFiles.clear();
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    document.getElementById(`file${i}`).checked = false;
+                }
+            }
+        }
+
+    /**
+     * 更新全选复选框状态 - 根据当前选择情况更新全选复选框的显示状态
+     */
+        function updateSelectAllCheckbox() {
+            const selectAll = document.getElementById('selectAll');
+            selectAll.checked = selectedFiles.size === uploadedFiles.length && uploadedFiles.length > 0;
+            selectAll.indeterminate = selectedFiles.size > 0 && selectedFiles.size < uploadedFiles.length;
+        }
+
+    /**
+     * 删除单个文件 - 从列表中移除指定索引的文件
+     * @param {number} index - 要删除的文件索引
+     */
+        function deleteFile(index) {
+            uploadedFiles.splice(index, 1);
+            selectedFiles.clear();
+            updateFileList();
+            document.getElementById('uploadBtn').disabled = uploadedFiles.length === 0;
+        }
+
+    /**
+     * 删除选中文件 - 批量删除所有被选中的文件
+     */
+        function deleteSelected() {
+            if (selectedFiles.size === 0) {
+                alert('请先选择要删除的文件');
+                return;
+            }
+            
+            if (confirm(`确定要删除选中的 ${selectedFiles.size} 个文件吗？`)) {
+                const sortedIndices = Array.from(selectedFiles).sort((a, b) => b - a);
+                for (let index of sortedIndices) {
+                    uploadedFiles.splice(index, 1);
+                }
+                selectedFiles.clear();
+                updateFileList();
+                document.getElementById('uploadBtn').disabled = uploadedFiles.length === 0;
+            }
+        }
+
+    /**
+     * 上传文件 - 将文件上传到服务器
+     */
+        async function uploadFiles() {
+            if (uploadedFiles.length === 0) return;
+
+            const formData = new FormData();
+            uploadedFiles.forEach(file => formData.append('files', file));
+            sessionId = 'session_' + Date.now();
+            formData.append('session', sessionId);
+
+            showStatus('正在上传文件...', 'info');
+            showProgress(true);
+
+            try {
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showStatus('文件上传成功！', 'success');
+                    document.getElementById('processBtn').disabled = false;
+                } else {
+                    throw new Error('上传失败');
+                }
+            } catch (error) {
+                showStatus('上传失败: ' + error.message, 'error');
+            } finally {
+                showProgress(false);
+            }
+        }
+
+    /**
+     * 处理文件 - 请求服务器处理已上传的文件
+     */
+        async function processFiles() {
+            if (!sessionId) return;
+
+            showStatus('正在处理图片，请稍候...', 'info');
+            document.getElementById('processBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ session: sessionId })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showStatus('处理完成！', 'success');
+                    document.getElementById('downloadBtn').style.display = 'inline-block';
+                } else {
+                    throw new Error('处理失败');
+                }
+            } catch (error) {
+                showStatus('处理失败: ' + error.message, 'error');
+                document.getElementById('processBtn').disabled = false;
+            }
+        }
+
+    /**
+     * 下载结果 - 打开新窗口下载处理后的文件
+     */
+        function downloadResult() {
+            if (sessionId) {
+                window.open(`${API_BASE}/download/${sessionId}`, '_blank');
+            }
+        }
+
+    /**
+     * 显示状态信息 - 在页面上显示操作状态信息
+     * @param {string} message - 要显示的消息
+     * @param {string} type - 消息类型（success/error/info）
+     */
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+    /**
+     * 显示进度条 - 控制进度条的显示和动画
+     * @param {boolean} show - 是否显示进度条
+     */
+        function showProgress(show) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.display = show ? 'block' : 'none';
+            if (show) {
+                document.getElementById('progressFill').style.width = '0%';
+                // 模拟进度
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += Math.random() * 10;
+                    if (progress >= 90) {
+                        clearInterval(interval);
+                        progress = 90;
+                    }
+                    document.getElementById('progressFill').style.width = progress + '%';
+                }, 200);
+            }
+        }
+    </script>
+</body>
+</html>
