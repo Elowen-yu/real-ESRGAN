@@ -266,7 +266,59 @@ python inference_realesrgan.py -n RealESRGAN_x2plus -i inputs
 
 
 
-#### 二.Ubuntu中conda环境运行real-ESRGAN
+#### 二.Windows中venv环境运行real-ESRGAN
+
+venv管理python环境
+
+```bash
+#1：创建虚拟环境
+python -m venv realesrgan_env
+realesrgan_env\Scripts\activate
+
+#2：安装 PyTorch + CUDA 11.8 支持版本(CUDA本身向下兼容,只要本机CUDA版本不过低就不用管)
+pip install torch==2.1.0+cu118 torchvision==0.16.0+cu118 torchaudio==2.1.0 -f https://download.pytorch.org/whl/torch_stable.html
+
+#3：安装 numpy 和依赖
+pip install numpy==1.24.4
+pip install tqdm opencv-python pillow scikit-image basicsr
+#!!!要是显示numpy不可用,就检查一下前面执行结果是否有uninstall numpy1.24.4,下载2.xx版本,如果有,请uninstall非1.24.4版本的numpy,重新下载1.24.4版本的
+
+#输入python回车后输入以下内容进行检查:
+import torch
+import numpy
+
+print("PyTorch version:", torch.__version__)
+print("CUDA version:", torch.version.cuda)
+print("Numpy version:", numpy.__version__)
+print("CUDA Available:", torch.cuda.is_available())
+print("Device Name:", torch.cuda.get_device_name(0))
+
+
+#检查应看到输出如下:
+PyTorch version: 2.1.0+cu118
+CUDA version: 11.8
+Numpy version: 1.24.4
+CUDA Available: True
+Device Name: Tesla V100
+
+#4：安装 Real-ESRGAN 本体
+git clone https://github.com/xinntao/Real-ESRGAN.git
+cd Real-ESRGAN
+pip install -r requirements.txt
+python setup.py develop
+
+#5：下载模型权重
+#进入 Real-ESRGAN 目录，执行：
+python scripts/download_pretrained_models.py
+
+#6：测试是否成功运行
+python inference_realesrgan.py -n RealESRGAN_x2plus -i inputs (要用四倍模型就直接把这个命令里的2改成4就行;;
+#如果要开人脸增强就直接在此命令后加上--face_enhance;;
+#如果要分块处理就在命令最后加--tile 600[这个数字代表你所分的小块的大小,分块大小越小,处理越慢,对cpu要求越低])
+```
+
+
+#### 三.Ubuntu中conda环境运行real-ESRGAN
 
 conda管理python环境
 
