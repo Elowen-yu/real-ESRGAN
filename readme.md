@@ -33,15 +33,21 @@
 - **Real-ESRGAN 算法**: 使用 RealESRGAN_x2plus 模型进行图像超分辨率处理
 - **批量处理**: 支持同时处理多个图片文件
 - **智能分块**: 使用 600px 分块处理，避免内存溢出
+<<<<<<< HEAD
 - **会话管理**: 每个处理任务使用独立的会话ID，支持多用户并发
 
+=======
+>>>>>>> 36b0d4fb2e0c8fd73b7f18fe575bb94877470bb3
 
 
 3. 下载功能
 
 - **压缩打包**: 自动将处理结果打包成 ZIP 文件
 - **一键下载**: 处理完成后可直接下载所有结果文件
+<<<<<<< HEAD
 - **文件管理**: 自动清理临时文件，避免存储空间浪费
+=======
+>>>>>>> 36b0d4fb2e0c8fd73b7f18fe575bb94877470bb3
 
 - **输出格式**：与输入格式相同，但分辨率提升2倍
 
@@ -266,7 +272,59 @@ python inference_realesrgan.py -n RealESRGAN_x2plus -i inputs
 
 
 
-#### 二.ubuntu运行real-ESRGAN
+#### 二.Windows中venv环境运行real-ESRGAN
+
+venv管理python环境
+
+```bash
+#1：创建虚拟环境
+python -m venv realesrgan_env
+realesrgan_env\Scripts\activate
+
+#2：安装 PyTorch + CUDA 11.8 支持版本(CUDA本身向下兼容,只要本机CUDA版本不过低就不用管)
+pip install torch==2.1.0+cu118 torchvision==0.16.0+cu118 torchaudio==2.1.0 -f https://download.pytorch.org/whl/torch_stable.html
+
+#3：安装 numpy 和依赖
+pip install numpy==1.24.4
+pip install tqdm opencv-python pillow scikit-image basicsr
+#!!!要是显示numpy不可用,就检查一下前面执行结果是否有uninstall numpy1.24.4,下载2.xx版本,如果有,请uninstall非1.24.4版本的numpy,重新下载1.24.4版本的
+
+#输入python回车后输入以下内容进行检查:
+import torch
+import numpy
+
+print("PyTorch version:", torch.__version__)
+print("CUDA version:", torch.version.cuda)
+print("Numpy version:", numpy.__version__)
+print("CUDA Available:", torch.cuda.is_available())
+print("Device Name:", torch.cuda.get_device_name(0))
+
+
+#检查应看到输出如下:
+PyTorch version: 2.1.0+cu118
+CUDA version: 11.8
+Numpy version: 1.24.4
+CUDA Available: True
+Device Name: Tesla V100
+
+#4：安装 Real-ESRGAN 本体
+git clone https://github.com/xinntao/Real-ESRGAN.git
+cd Real-ESRGAN
+pip install -r requirements.txt
+python setup.py develop
+
+#5：下载模型权重
+#进入 Real-ESRGAN 目录，执行：
+python scripts/download_pretrained_models.py
+
+#6：测试是否成功运行
+python inference_realesrgan.py -n RealESRGAN_x2plus -i inputs (要用四倍模型就直接把这个命令里的2改成4就行;;
+#如果要开人脸增强就直接在此命令后加上--face_enhance;;
+#如果要分块处理就在命令最后加--tile 600[这个数字代表你所分的小块的大小,分块大小越小,处理越慢,对cpu要求越低])
+```
+
+
+#### 三.Ubuntu中conda环境运行real-ESRGAN
 
 conda管理python环境
 
@@ -440,6 +498,7 @@ pip install "numpy<2"
 #2.降级 opencv-python 以兼容 numpy<2
 pip install "opencv-python<4.12"  # 安装兼容 numpy 1.x 的 OpenCV 版本
 
+
 #3.检查basicsr是否可正常导入 不可，则根据提示排除错误
 python -c 'from basicsr.utils import logger; print("Dependencies check passed!")'
 ```
@@ -448,4 +507,30 @@ python -c 'from basicsr.utils import logger; print("Dependencies check passed!")
 ```bash
 ##x2_plus推断（批量处理input）文件夹中的所有图片
 python inference_realesrgan.py -n RealESRGAN_x2plus -i inputs
+
 ```
+
+```
+
+
+
+### 以下是我们踩过的坑!!
+
+#### 一.不要尝试通过在任何云工作空间(cloudstudio)部署
+
+- **百度云--飞浆AIStudio**:百度云自带的paddlepaddle框架与Real-ESRGAN所需的pytorch兼容度很低,非常低;其实根本就是禁用了pytorch,但是有一两个版本可以和低版本的paddle paddle兼容
+  
+- **腾讯云工作空间**:这个云工作空间分两种,一开始我们用轻量版的云工作空间(因为考虑到轻量版可以按阶梯计费,使用时长够久就比较便宜),但是后来发现了两个问题:第一.轻量版不提供公网IP,导致你的前后端都部署在云工作空间的话就需要用工具内网穿透两次,而且每一次内网穿透都会得到不同的公网ip,即使写了一键启动的脚本,也会导致经常报错或是无法自动将后端新的公网ip更新到前端代码中,导致前后端无法正确连接;第二.轻量级的带宽限制非常恶心,处理完的图像压缩包下载速度达到了惊人的200kb/s(以内.),意味着17张处理好的共1.5g的压缩包要下载20分钟,显然是远远不够的,所以我们放弃了轻量级的云工作空间;第二种是提供公网ip的,在图像上传与下载的速度上是好了很多,但是依旧是只有惊人的500kb/s.并且这个云工作空间无法提升带宽,因此最终我们被带宽卡死了,于是决定走回自己购买主机的方法.
+
+并且用云工作空间的价格也并不便宜,如果要每天开启八小时,需要每天都有负责人通过命令行来开启系统;如果采用24小时开启系统的方法,每月成本会高达2500元,比佐糖成本高(2000元).
+
+#### 二.不要尝试通过云服务器部署
+
+市面上不论是哪家的云gpu服务器价格都非常高昂,最拉跨的(T4)基本也要9块以上每小时;我们没有做过考虑,因为这样下来一个月的成本甚至比直接用佐糖还贵
+
+#### 三.Real-ESRGAN图像高清模型的选用
+共两种模型,一个是2倍一个是4倍放大;
+- **4倍模型**:4倍的模型对图像处理的效果非常令我们满意,但是由于处理太细,对gpu的要求非常高,大部分图片如果不分块处理(--tile xx[xx表示分块的大小]),都会轻松干爆显存,我们用的v100;32G在不分块的情况下32张图片只能处理两张,并且分块处理会极大程度上拉长处理时间,导致我们40张图片要处理14分钟,经过我们估计,如果采用4倍放大,应该最少需要4070ti super,32g显存才能较好完成图像的处理,整套主机搭下来成本保守估计9500以上;建议公司图像处理高清度需求或是处理速度需求非常大的时候再考虑采用;我们采用的是下面的2倍模型.
+  
+- **2倍模型**:2倍放大对gpu的要求非常非常低,经我们实测大概3050的显卡(我们用的是云工作空间的T4),8G显存,[也就是说成本甚至可以只要3000以内]依旧可以很好且快速的处理所有图像,处理速度也很可观,甚至将近20张只花了4分钟,佐糖的处理速度大约在300张30分钟,显然速度上是令人满意的,处理结果虽然在一些图片上显然不如4倍的模型,但是仍然是足够的,因为我们同时也必须考虑我们的客户群体的需求,外国人更喜欢自己真实的样子,4倍模型优化过于完美了,效果可能会适得其反,所以我们最终采用了2倍模型.
+
